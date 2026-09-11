@@ -1,12 +1,12 @@
 resource "google_compute_instance" "tools_vm" {
-  name = "tools-vm"
+  name         = "tools-vm"
   machine_type = "e2-medium"
-  zone = "europe-central2-a"
+  zone         = "europe-central2-a"
 
   boot_disk {
     initialize_params {
       image = "debian-cloud/debian-12"
-      size = 20
+      size  = 20
     }
   }
 
