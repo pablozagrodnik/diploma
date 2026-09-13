@@ -4,10 +4,21 @@ resource "google_compute_network" "main_vpc" {
 }
 
 resource "google_compute_subnetwork" "main_subnet" {
-  name          = "thesis-subnet"
-  ip_cidr_range = "10.0.0.0/24"
-  region        = "europe-central2"
-  network       = google_compute_network.main_vpc.id
+  name                     = "thesis-subnet"
+  ip_cidr_range            = "10.0.0.0/24"
+  region                   = "europe-central2"
+  network                  = google_compute_network.main_vpc.id
+  private_ip_google_access = true
+
+  secondary_ip_range {
+    range_name    = "gke-pods-range"
+    ip_cidr_range = "10.10.0.0/16"
+  }
+
+  secondary_ip_range {
+    range_name    = "gke-services-range"
+    ip_cidr_range = "10.20.0.0/20"
+  }
 }
 
 resource "google_compute_router" "router" {
