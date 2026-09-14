@@ -1,0 +1,42 @@
+name: Thesis Tests
+
+on:
+  workflow_dispatch:
+
+jobs:
+  setup_base:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Terraform Apply - base
+        run: echo "run base infra"
+
+  run_tests:
+    needs: setup_base
+    runs-on: ubuntu-latest
+    strategy:
+      max-parallel: 1
+      fail-fast: false
+      matrix:
+        runtime: [java-jit, java-native, go]
+        test_type: [idle, constant, linear, spike, stress]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Terraform Apply - modules
+        run: echo "run modules infra"
+      - name: Deploy & Test
+        run: |
+          echo "deploy app and run tests"
+          echo "${{ matrix.runtime }} ${{ matrix.test_type }}"
+      - name: Terraform Destroy - modules
+        if: always()
+        run: echo "destroy modules infra"
+
+  teardown_base:
+    needs: [setup_base, run_tests]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Terraform Destroy - base
+        run: echo "destroy base infra"
