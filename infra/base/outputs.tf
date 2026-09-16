@@ -17,3 +17,11 @@ output "network_id" {
 output "subnet_id" {
   value = google_compute_subnetwork.main_subnet.id
 }
+
+output "tools_vm_name" {
+  value = google_compute_instance.tools_vm.name
+}
+
+output "tools_vm_zone" {
+  value = google_compute_instance.tools_vm.zone
+}
