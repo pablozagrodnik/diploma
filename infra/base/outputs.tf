@@ -25,3 +25,4 @@ output "tools_vm_name" {
 output "tools_vm_zone" {
   value = google_compute_instance.tools_vm.zone
 }
+

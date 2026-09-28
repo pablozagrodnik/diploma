@@ -16,9 +16,9 @@ resource "google_compute_instance" "tools_vm" {
 
   metadata_startup_script = <<-EOF
     #!/bin/bash
+    export DEBIAN_FRONTEND=noninteractive
     apt-get update
-    apt-get upgrade
-    apt-get install -y docker.io docker-compose-v2
+    apt-get install -y docker.io docker-compose
     systemctl enable docker
     systemctl start docker
   EOF

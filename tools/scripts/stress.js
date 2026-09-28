@@ -13,7 +13,7 @@ export default () => {
     const baseUrl = __ENV.API_URL || 'http://localhost:8080';
     const urlRes = http.get(`${baseUrl}/api/health`);
 
-    check(res, {
+    check(urlRes, {
         'status - 200': (r) => r.status === 200
     })
 
