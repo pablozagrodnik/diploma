@@ -41,12 +41,12 @@ resource "google_sql_user" "default" {
   password = var.db_password
 }
 
-resource "google_redis_instance" "cache" {
-  memory_size_gb     = 1
-  name               = "thesis-redis"
-  tier               = "BASIC"
-  region             = "europe-central2"
-  authorized_network = google_compute_network.main_vpc.id
-
-  depends_on = [google_service_networking_connection.private_vpc_connection]
-}
+# resource "google_redis_instance" "cache" {
+#   memory_size_gb     = 1
+#   name               = "thesis-redis"
+#   tier               = "BASIC"
+#   region             = "europe-central2"
+#   authorized_network = google_compute_network.main_vpc.id
+#
+#   depends_on = [google_service_networking_connection.private_vpc_connection]
+# }

@@ -2,9 +2,9 @@ output "postgres_private_ip" {
   value = google_sql_database_instance.postgres.private_ip_address
 }
 
-output "redis_private_ip" {
-  value = google_redis_instance.cache.host
-}
+# output "redis_private_ip" {
+#   value = google_redis_instance.cache.host
+# }
 
 output "gke_service_account_email" {
   value = google_service_account.gke_sa.email

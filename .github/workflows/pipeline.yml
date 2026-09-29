@@ -6,6 +6,8 @@ on:
 jobs:
   setup_base:
     runs-on: ubuntu-latest
+    outputs:
+      db_ip: ${{steps.get_ip.outputs.DB_IP }}
     steps:
       - uses: actions/checkout@v4
       - uses: google-github-actions/auth@v2
@@ -21,6 +23,13 @@ jobs:
         run: |
           terraform init
           terraform apply -auto-approve
+
+      - name: Extract DB IP
+        id: get_ip
+        working-directory: infra/base
+        run: |
+          IP=$(terraform output -raw postgres_private_ip)
+          echo "DB_IP=$IP" >> $GITHUB_OUTPUT
 
   run_tests:
     needs: setup_base
@@ -58,7 +67,8 @@ jobs:
           CLUSTER_NAME=$(terraform output -raw cluster_name)
           gcloud container clusters get-credentials $CLUSTER_NAME --zone=europe-central2-a
           
-          helm upgrade --install thesis-app ../../k8s/thesis-api
+          helm upgrade --install thesis-app ../../k8s/thesis-api \
+            --set postgres.host=${{ needs.setup_base.outputs.db_ip }}
 
       - name: Internal Load Balancer IP
         run: |
@@ -73,7 +83,17 @@ jobs:
         run: |
           gcloud compute scp --quiet --recurse tools/ runner@tools-vm:~/tools --zone=europe-central2-a --tunnel-through-iap
           gcloud compute ssh runner@tools-vm --quiet --zone=europe-central2-a --tunnel-through-iap \
-            --command="cd ~/tools && sudo docker-compose run --rm -e API_URL=http://${{ env.APP_IP }} k6 run /scripts/${{ matrix.test_type }}.js"
+            --command="mkdir -p ~/tools/results && cd ~/tools && sudo docker-compose run --rm \
+              -v /home/runner/tools/results:/results \
+              -e API_URL=http://${{ env.APP_IP }} \
+              -e K6_PROMETHEUS_RW_SERVER_URL=http://prometheus:9090/api/v1/write \
+              k6 run -o experimental-prometheus-rw  --out csv=/results/${{ matrix.test_type }}_k6.csv /scripts/${{ matrix.test_type }}.js"
+
+      - name: Fetch Results and Upload to GCS
+        if: always()
+        run: |
+          gcloud compute scp runner@tools-vm:~/tools/results/${{ matrix.test_type }}_k6.csv . --zone=europe-central2-a --tunnel-through-iap
+          gcloud storage cp ${{ matrix.test_type }}_k6.csv gs://thesis-test-results/run-${{ github.run_number }}/${{ matrix.runtime}}/
 
       - name: Terraform Destroy - modules
         if: always()
