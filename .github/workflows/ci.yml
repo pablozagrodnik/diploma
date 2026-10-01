@@ -39,7 +39,7 @@ jobs:
       - name: Build and Push
         uses: docker/build-push-action@v7
         with:
-          context: ./${{ matrix.dir }}
-          file: ./${{ matrix.dir }}/${{ matrix.dockerfile }}
+          context: ./apps/${{ matrix.dir }}
+          file: ./apps/${{ matrix.dir }}/${{ matrix.dockerfile }}
           push: ${{ !env.ACT }}
           tags: ${{ env.REGISTRY }}/${{ env.REPO }}/thesis-api-${{ matrix.runtime }}:latest
