@@ -8,10 +8,11 @@ resource "helm_release" "thesis_app" {
     {
       name  = "postgres.host"
       value = data.terraform_remote_state.base.outputs.postgres_private_ip
-    },
-    {
-      name  = "redis.host"
-      value = data.terraform_remote_state.base.outputs.redis_private_ip
     }
+    # ,
+    #   {
+    #     name  = "redis.host"
+    #     value = data.terraform_remote_state.base.outputs.redis_private_ip
+    #   }
   ]
 }

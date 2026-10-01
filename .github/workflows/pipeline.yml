@@ -38,7 +38,7 @@ jobs:
       max-parallel: 1
       fail-fast: false
       matrix:
-        runtime: [ test ]
+        runtime: [ java-jit ]
         test_type: [ stress ]
 #       runtime: [ java-jit, java-native, go ]
 #       test_type: [idle, constant, linear, spike, stress]
@@ -63,27 +63,35 @@ jobs:
 
       - name: GKE Config & Deploy App
         working-directory: infra/modules
+        env:
+          DB_PASS: ${{ secrets.DB_PASSWORD }}
         run: |
           CLUSTER_NAME=$(terraform output -raw cluster_name)
           gcloud container clusters get-credentials $CLUSTER_NAME --zone=europe-central2-a
           
-          helm upgrade --install thesis-app ../../k8s/thesis-api \
-            --set postgres.host=${{ needs.setup_base.outputs.db_ip }}
+          REPO=$(echo "${{ github.repository }}" | tr '[:upper:]' '[:lower:]')
+          
+          helm upgrade --install thesis-api ../../k8s/thesis-api \
+            --set image.repository=ghcr.io/$REPO/thesis-api-${{ matrix.runtime }} \
+            --set image.tag=latest \
+            --set env.DB_HOST=${{ needs.setup_base.outputs.db_ip }} \
+            --set env.DB_USER=postgres \
+            --set env.DB_PASSWORD=$DB_PASS
 
       - name: Internal Load Balancer IP
         run: |
           APP_IP=""
           while [ -z "$APP_IP" ]; do
             sleep 6
-            APP_IP=$(kubectl get svc -l app.kubernetes.io/instance=thesis-app -o jsonpath='{.items[0].status.loadBalancer.ingress[0].ip}' 2>/dev/null)
+            APP_IP=$(kubectl get svc -l app.kubernetes.io/instance=thesis-api -o jsonpath='{.items[0].status.loadBalancer.ingress[0].ip}' 2>/dev/null)
           done
           echo "APP_IP=$APP_IP" >> $GITHUB_ENV
 
       - name: Copy Test Scripts & Run k6
         run: |
-          gcloud compute scp --quiet --recurse tools/ runner@tools-vm:~/tools --zone=europe-central2-a --tunnel-through-iap
+          gcloud compute scp --quiet --recurse tools runner@tools-vm:~/ --zone=europe-central2-a --tunnel-through-iap
           gcloud compute ssh runner@tools-vm --quiet --zone=europe-central2-a --tunnel-through-iap \
-            --command="mkdir -p ~/tools/results && cd ~/tools && sudo docker-compose run --rm \
+            --command="mkdir -p ~/tools/results && chmod 777 ~/tools/results && cd ~/tools && sudo docker-compose up -d && sudo docker-compose run --rm \
               -v /home/runner/tools/results:/results \
               -e API_URL=http://${{ env.APP_IP }} \
               -e K6_PROMETHEUS_RW_SERVER_URL=http://prometheus:9090/api/v1/write \
@@ -95,27 +103,27 @@ jobs:
           gcloud compute scp runner@tools-vm:~/tools/results/${{ matrix.test_type }}_k6.csv . --zone=europe-central2-a --tunnel-through-iap
           gcloud storage cp ${{ matrix.test_type }}_k6.csv gs://thesis-test-results/run-${{ github.run_number }}/${{ matrix.runtime}}/
 
-      - name: Terraform Destroy - modules
-        if: always()
-        working-directory: infra/modules
-        run: terraform destroy -auto-approve
-
-  teardown_base:
-    needs: [setup_base, run_tests]
-    if: always()
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: google-github-actions/auth@v2
-        with:
-          credentials_json: ${{ secrets.GCP_CREDENTIALS }}
-      - uses: hashicorp/setup-terraform@v3
-        with:
-         terraform_version: "1.16.3"
-      - name: Terraform Destroy - base
-        working-directory: infra/base
-        env:
-          TF_VAR_db_password: ${{ secrets.DB_PASSWORD }}
-        run: |
-          terraform init
-          terraform destroy -auto-approve
+#      - name: Terraform Destroy - modules
+#        if: always()
+#        working-directory: infra/modules
+#        run: terraform destroy -auto-approve
+#
+#  teardown_base:
+#    needs: [setup_base, run_tests]
+#    if: always()
+#    runs-on: ubuntu-latest
+#    steps:
+#      - uses: actions/checkout@v4
+#      - uses: google-github-actions/auth@v2
+#        with:
+#          credentials_json: ${{ secrets.GCP_CREDENTIALS }}
+#      - uses: hashicorp/setup-terraform@v3
+#        with:
+#         terraform_version: "1.16.3"
+#      - name: Terraform Destroy - base
+#        working-directory: infra/base
+#        env:
+#          TF_VAR_db_password: ${{ secrets.DB_PASSWORD }}
+#        run: |
+#          terraform init
+#          terraform destroy -auto-approve

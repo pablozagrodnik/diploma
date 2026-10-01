@@ -168,3 +168,8 @@ postgres:
   host: ""
 redis:
   host: ""
+
+env:
+  DB_HOST: "localhost"
+  DB_USER: "postgres"
+  DB_PASSWORD: "password"
