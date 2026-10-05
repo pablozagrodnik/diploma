@@ -7,8 +7,12 @@ jobs:
   setup_base:
     runs-on: ubuntu-latest
     outputs:
-      db_ip: ${{steps.get_ip.outputs.DB_IP }}
+      db_ip: ${{ steps.get_ip.outputs.DB_IP }}
+      run_id: ${{ steps.set_run_id.outputs.RUN_ID }}
     steps:
+      - name: Set Run ID
+        id: set_run_id
+        run: echo "RUN_ID=$(date +"%m-%d_%H-%M")" >> $GITHUB_OUTPUT
       - uses: actions/checkout@v4
       - uses: google-github-actions/auth@v2
         with:
@@ -40,8 +44,8 @@ jobs:
       matrix:
         runtime: [ java-jit ]
         test_type: [ stress ]
-#       runtime: [ java-jit, java-native, go ]
-#       test_type: [idle, constant, linear, spike, stress]
+    #       runtime: [ java-jit, java-native, go ]
+    #       test_type: [idle, constant, linear, spike, stress]
     steps:
       - uses: actions/checkout@v4
       - uses: google-github-actions/auth@v2
@@ -71,6 +75,8 @@ jobs:
           
           REPO=$(echo "${{ github.repository }}" | tr '[:upper:]' '[:lower:]')
           
+          helm uninstall thesis-api --ignore-not-found --wait
+          
           helm upgrade --install thesis-api ../../k8s/thesis-api \
             --set image.repository=ghcr.io/$REPO/thesis-api-${{ matrix.runtime }} \
             --set image.tag=latest \
@@ -87,43 +93,61 @@ jobs:
           done
           echo "APP_IP=$APP_IP" >> $GITHUB_ENV
 
-      - name: Copy Test Scripts & Run k6
+      - name: Wait for LB
+        run: |
+          while ! curl -s -o /dev/null -w "%{http_code}" http://${{ env.APP_IP }}/health | grep -q "200"; do
+            echo "Waiting for LoadBalancer"
+            sleep 5
+          done
+
+      - name: Run Test Iterations
         run: |
           gcloud compute scp --quiet --recurse tools runner@tools-vm:~/ --zone=europe-central2-a --tunnel-through-iap
-          gcloud compute ssh runner@tools-vm --quiet --zone=europe-central2-a --tunnel-through-iap \
-            --command="mkdir -p ~/tools/results && chmod 777 ~/tools/results && cd ~/tools && sudo docker-compose up -d && sudo docker-compose run --rm \
-              -v /home/runner/tools/results:/results \
-              -e API_URL=http://${{ env.APP_IP }} \
-              -e K6_PROMETHEUS_RW_SERVER_URL=http://prometheus:9090/api/v1/write \
-              k6 run -o experimental-prometheus-rw  --out csv=/results/${{ matrix.test_type }}_k6.csv /scripts/${{ matrix.test_type }}.js"
+          
+          ITERATIONS=3
+          
+          for i in $(seq 1 $ITERATIONS); do
+            echo "---$i - ${{ matrix.runtime }}---"
+          
+            kubectl rollout restart deployment thesis-api
+            kubectl rollout status deployment thesis-api --timeout=120s
+          
+            gcloud compute ssh runner@tools-vm --quiet --zone=europe-central2-a --tunnel-through-iap \
+              --command="mkdir -p ~/tools/results && chmod 777 ~/tools/results && cd ~/tools && sudo docker-compose up -d && sudo docker-compose run --rm \
+                -v /home/runner/tools/results:/results \
+                -e API_URL=http://${{ env.APP_IP }} \
+                -e K6_PROMETHEUS_RW_SERVER_URL=http://prometheus:9090/api/v1/write \
+                k6 run -o experimental-prometheus-rw  --out csv=/results/${{ matrix.test_type }}_iter_${i}_k6.csv /scripts/${{ matrix.test_type }}.js"
+          
+            gcloud compute scp runner@tools-vm:~/tools/results/${{ matrix.test_type }}_iter_${i}_k6.csv . --zone=europe-central2-a --tunnel-through-iap
+            gcloud storage cp ${{ matrix.test_type }}_iter_${i}_k6.csv gs://thesis-test-results/run-${{ needs.setup_base.outputs.run_id }}/${{ matrix.runtime }}/${{ matrix.test_type }}/
+          done
 
-      - name: Fetch Results and Upload to GCS
+
+  teardown_base:
+    needs: [setup_base, run_tests]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_CREDENTIALS }}
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.16.3"
+
+      - name: Terraform Destroy - modules
         if: always()
+        working-directory: infra/modules
         run: |
-          gcloud compute scp runner@tools-vm:~/tools/results/${{ matrix.test_type }}_k6.csv . --zone=europe-central2-a --tunnel-through-iap
-          gcloud storage cp ${{ matrix.test_type }}_k6.csv gs://thesis-test-results/run-${{ github.run_number }}/${{ matrix.runtime}}/
+          terraform init
+          terraform destroy -auto-approve
 
-#      - name: Terraform Destroy - modules
-#        if: always()
-#        working-directory: infra/modules
-#        run: terraform destroy -auto-approve
-#
-#  teardown_base:
-#    needs: [setup_base, run_tests]
-#    if: always()
-#    runs-on: ubuntu-latest
-#    steps:
-#      - uses: actions/checkout@v4
-#      - uses: google-github-actions/auth@v2
-#        with:
-#          credentials_json: ${{ secrets.GCP_CREDENTIALS }}
-#      - uses: hashicorp/setup-terraform@v3
-#        with:
-#         terraform_version: "1.16.3"
-#      - name: Terraform Destroy - base
-#        working-directory: infra/base
-#        env:
-#          TF_VAR_db_password: ${{ secrets.DB_PASSWORD }}
-#        run: |
-#          terraform init
-#          terraform destroy -auto-approve
+      - name: Terraform Destroy - base
+        working-directory: infra/base
+        env:
+          TF_VAR_db_password: ${{ secrets.DB_PASSWORD }}
+        run: |
+          terraform init
+          terraform destroy -auto-approve

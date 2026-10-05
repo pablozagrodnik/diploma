@@ -49,16 +49,22 @@ spec:
               value: {{ .Values.env.DB_PASSWORD | quote }}
           ports:
             - name: http
-              containerPort: {{ .Values.service.port }}
+              containerPort: 8080
               protocol: TCP
+          lifecycle:
+            preStop:
+              exec:
+                command: ["sleep", "15"]
           livenessProbe:
             httpGet:
-              path: /health
+              path: {{ .Values.livenessProbe.httpGet.path }}
               port: 8080
+            initialDelaySeconds: 40
           readinessProbe:
             httpGet:
-              path: /health
+              path: {{ .Values.readinessProbe.httpGet.path }}
               port: 8080
+            initialDelaySeconds: 40
           {{- with .Values.resources }}
           resources:
             {{- toYaml . | nindent 12 }}
