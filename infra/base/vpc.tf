@@ -17,7 +17,7 @@ resource "google_compute_subnetwork" "main_subnet" {
 
   secondary_ip_range {
     range_name    = "gke-services-range"
-    ip_cidr_range = "10.20.0.0/20"
+    ip_cidr_range = "10.30.0.0/20"
   }
 }
 
