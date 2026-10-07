@@ -1,0 +1,15 @@
+CREATE TABLE IF NOT EXISTS data_a (
+    id SERIAL PRIMARY KEY,
+    name VARCHAR(255) NOT NULL,
+    value INTEGER NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS data_b (
+    id SERIAL PRIMARY KEY,
+    data_a_id INTEGER NOT NULL REFERENCES data_a(id) ON DELETE CASCADE,
+    title VARCHAR(50) NOT NULL,
+    description VARCHAR(255) NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_data_b_a_id ON data_b(data_a_id);
+

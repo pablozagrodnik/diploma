@@ -23,7 +23,7 @@ public class SystemController {
     @PostMapping("/reset")
     public ResponseEntity<String> resetDatabase() {
         // TRUNCATE TABLE
-        Integer result = jdbcTemplate.queryForObject("SELECT 1", Integer.class);
-        return ResponseEntity.ok("Database reset success, result - " + result);
+        jdbcTemplate.execute("TRUNCATE TABLE data_a, data_b RESTART IDENTITY CASCADE");
+        return ResponseEntity.ok("Database reset success");
     }
 }
