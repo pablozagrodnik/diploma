@@ -52,6 +52,17 @@ func resetDatabase(c *gin.Context) {
 	c.String(http.StatusOK, "Database reset")
 }
 
+func teardown(c *gin.Context) {
+	ctx := context.Background()
+	_, err := dbPool.Exec(ctx, "DROP OWNED BY postgres CASCADE;")
+	if err != nil {
+		c.String(http.StatusInternalServerError, "Drop error: "+err.Error())
+		return
+	}
+
+	c.String(http.StatusOK, "Database clear")
+}
+
 // CPU
 func compute(c *gin.Context) {
 	nStr := c.DefaultQuery("n", "50")

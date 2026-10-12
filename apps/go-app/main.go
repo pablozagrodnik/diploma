@@ -38,6 +38,7 @@ func main() {
 
 	r.GET("/health", healthCheck)
 	r.POST("/reset", resetDatabase)
+	r.POST("/teardown", teardown)
 
 	log.Println("Listening on :8080")
 	r.Run(":8080")

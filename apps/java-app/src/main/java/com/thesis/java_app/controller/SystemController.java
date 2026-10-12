@@ -67,4 +67,10 @@ public class SystemController {
 
         return ResponseEntity.ok("Database reset and seeded succes");
     }
+
+    @PostMapping("/teardown")
+    public ResponseEntity<String> teardown() {
+        jdbcTemplate.execute("DROP OWNED BY postgres CASCADE");
+        return ResponseEntity.ok("Database clear");
+    }
 }
