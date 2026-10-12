@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"log"
-	"net/http"
 	"os"
 
 	"github.com/gin-gonic/gin"
@@ -35,20 +34,6 @@ func main() {
 
 	log.Println("Listening on :8080")
 	r.Run(":8080")
-}
-
-func healthCheck(c *gin.Context) {
-	c.String(http.StatusOK, "OK")
-}
-
-func resetDatabase(c *gin.Context) {
-	// TRUNCATE TABLE
-	_, err := dbPool.Exec(context.Background(), "SELECT 1")
-	if err != nil {
-		c.String(http.StatusInternalServerError, "Database error: "+err.Error())
-		return
-	}
-	c.String(http.StatusOK, "Database reset")
 }
 
 func getEnv(key, fallback string) string {

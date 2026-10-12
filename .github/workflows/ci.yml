@@ -18,9 +18,9 @@ jobs:
           - runtime: java-jit
             dir: java-app
             dockerfile: Dockerfile
-#          - runtime: java-native
-#            dir: java-app
-#            dockerfile: Dockerfile.native
+          - runtime: java-native
+            dir: java-app
+            dockerfile: Dockerfile.native
           - runtime: go
             dir: go-app
             dockerfile: Dockerfile
