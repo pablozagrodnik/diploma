@@ -8,6 +8,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
 var dbPool *pgxpool.Pool
@@ -28,6 +29,12 @@ func main() {
 	defer dbPool.Close()
 
 	r := gin.Default()
+
+	r.GET("/metrics", gin.WrapH(promhttp.Handler()))
+
+	r.GET("/compute", compute)
+	r.GET("/records/:id", getRecord)
+	r.POST("/records", createRecord)
 
 	r.GET("/health", healthCheck)
 	r.POST("/reset", resetDatabase)
