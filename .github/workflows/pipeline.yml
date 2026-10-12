@@ -113,7 +113,9 @@ jobs:
             kubectl rollout status deployment thesis-api --timeout=120s
           
             gcloud compute ssh runner@tools-vm --quiet --zone=europe-central2-a --tunnel-through-iap \
-              --command="mkdir -p ~/tools/results && chmod 777 ~/tools/results && cd ~/tools && sudo docker-compose up -d && sudo docker-compose run --rm \
+              --command="mkdir -p ~/tools/results && chmod 777 ~/tools/results && cd ~/tools && \
+                echo '[{\"targets\": [\"${{ env.APP_IP }}:80\"]}]' > targets.json && \
+                sudo docker-compose up -d && sudo docker-compose run --rm \
                 -v /home/runner/tools/results:/results \
                 -e API_URL=http://${{ env.APP_IP }} \
                 -e K6_PROMETHEUS_RW_SERVER_URL=http://prometheus:9090/api/v1/write \
