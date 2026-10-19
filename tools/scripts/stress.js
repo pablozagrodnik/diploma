@@ -1,27 +1,25 @@
 import http from 'k6/http';
-import { sleep, check } from 'k6';
+import { sleep } from 'k6';
 
 
 export const options = {
     stages: [
-        { duration: '5s', target: 10 },
-        { duration: '5s', target: 10 },
-        { duration: '2s', target: 0 },
+        { duration: '30s', target: 5 },
+        { duration: '1m', target: 5 },
+        { duration: '30s', target: 30 },
+        { duration: '1m', target: 30 },
+        { duration: '30s', target: 0 },
     ],
 };
 
-export default () => {
-    const baseUrl = __ENV.API_URL || 'http://localhost:8080';
-    const healthRes = http.get(`${baseUrl}/health`);
+export default function () {
+    const baseUrl = __ENV.API_URL;
 
-    check(healthRes, {
-        'health status - 200': (r) => r.status === 200
-    });
+    http.get(`${baseUrl}/compute?n=25`);
+    http.post(`${baseUrl}/records`);
 
-    const resetRes = http.post(`${baseUrl}/reset`);
-    check(resetRes, {
-        'reset status - 200': (r) => r.status === 200
-    });
+    const randomId = Math.floor(Math.random() * 10000) + 1;
+    http.get(`${baseUrl}/records/${randomId}`)
 
     sleep(1);
 };

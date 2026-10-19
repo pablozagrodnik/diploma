@@ -22,7 +22,7 @@ resource "google_sql_database_instance" "postgres" {
   depends_on = [google_service_networking_connection.private_vpc_connection]
 
   settings {
-    tier              = "db-f1-micro"
+    tier              = "db-g1-small"
     availability_type = "ZONAL"
     disk_size         = 10
 
