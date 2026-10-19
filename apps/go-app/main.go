@@ -8,6 +8,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
@@ -19,7 +20,7 @@ func main() {
 	password := getEnv("DB_PASSWORD", "password")
 	dbName := getEnv("DB_NAME", "postgres")
 
-	connString := fmt.Sprintf("postgres://%s:%s@%s/%s", user, password, host, dbName)
+	connString := fmt.Sprintf("postgres://%s:%s@%s/%s?pool_max_conns=50&pool_min_conns=10", user, password, host, dbName)
 
 	var err error
 	dbPool, err = pgxpool.New(context.Background(), connString)
@@ -28,7 +29,18 @@ func main() {
 	}
 	defer dbPool.Close()
 
-	r := gin.Default()
+	prometheus.MustRegister(prometheus.NewGaugeFunc(
+		prometheus.GaugeOpts{
+			Name: "pgxpool_acquired_conns",
+			Help: "Number of currently acquired conns in the pool",
+		},
+		func() float64 {
+			return float64(dbPool.Stat().AcquiredConns())
+		}))
+
+	gin.SetMode(gin.ReleaseMode)
+	r := gin.New()
+	r.Use(gin.Recovery())
 
 	r.GET("/metrics", gin.WrapH(promhttp.Handler()))
 
