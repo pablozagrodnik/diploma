@@ -28,6 +28,8 @@ func main() {
 	}
 	defer dbPool.Close()
 
+	initDatabaseSchema(context.Background(), dbPool)
+
 	r := gin.Default()
 
 	r.GET("/metrics", gin.WrapH(promhttp.Handler()))
@@ -42,6 +44,30 @@ func main() {
 
 	log.Println("Listening on :8080")
 	r.Run(":8080")
+}
+
+func initDatabaseSchema(ctx context.Context, db *pgxpool.Pool) {
+	schemaQuery := `
+	CREATE TABLE IF NOT EXISTS data_a (
+		id SERIAL PRIMARY KEY,
+		name VARCHAR(255) NOT NULL,
+		value INTEGER NOT NULL
+	);
+
+	CREATE TABLE IF NOT EXISTS data_b (
+		id SERIAL PRIMARY KEY,
+		data_a_id INTEGER NOT NULL REFERENCES data_a(id) ON DELETE CASCADE,
+		title VARCHAR(50) NOT NULL,
+		description VARCHAR(255) NOT NULL
+	);
+
+	CREATE INDEX IF NOT EXISTS idx_data_b_a_id ON data_b(data_a_id);
+	`
+	_, err := db.Exec(ctx, schemaQuery)
+	if err != nil {
+		log.Fatalf("Unable to initialize schema: %v\n", err)
+	}
+	log.Println("Database schema initialized")
 }
 
 func getEnv(key, fallback string) string {
