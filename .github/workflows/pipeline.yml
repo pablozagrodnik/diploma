@@ -42,7 +42,7 @@ jobs:
       max-parallel: 1
       fail-fast: false
       matrix:
-        runtime: [ java-jit ]
+        runtime: [ java-jit, go ]
         test_type: [ stress ]
     #       runtime: [ java-jit, java-native, go ]
     #       test_type: [idle, constant, linear, spike, stress]
@@ -76,6 +76,7 @@ jobs:
           REPO=$(echo "${{ github.repository }}" | tr '[:upper:]' '[:lower:]')
           
           helm uninstall thesis-api --ignore-not-found --wait
+          kubectl delete svc thesis-api --ignore-not-found --wait
           
           helm upgrade --install thesis-api ../../k8s/thesis-api \
             --set image.repository=ghcr.io/$REPO/thesis-api-${{ matrix.runtime }} \
@@ -104,52 +105,56 @@ jobs:
         run: |
           gcloud compute scp --quiet --recurse tools runner@tools-vm:~/ --zone=europe-central2-a --tunnel-through-iap
           
-          ITERATIONS=3
+          ITERATIONS=2
           
           for i in $(seq 1 $ITERATIONS); do
             echo "---$i - ${{ matrix.runtime }}---"
           
             kubectl rollout restart deployment thesis-api
             kubectl rollout status deployment thesis-api --timeout=120s
-          
+
             gcloud compute ssh runner@tools-vm --quiet --zone=europe-central2-a --tunnel-through-iap \
-              --command="mkdir -p ~/tools/results && chmod 777 ~/tools/results && cd ~/tools && \
-                echo '[{\"targets\": [\"${{ env.APP_IP }}:80\"]}]' > targets.json && \
-                sudo docker-compose up -d && sudo docker-compose run --rm \
-                -v /home/runner/tools/results:/results \
-                -e API_URL=http://${{ env.APP_IP }} \
-                -e K6_PROMETHEUS_RW_SERVER_URL=http://prometheus:9090/api/v1/write \
-                k6 run -o experimental-prometheus-rw  --out csv=/results/${{ matrix.test_type }}_iter_${i}_k6.csv /scripts/${{ matrix.test_type }}.js"
-          
-            gcloud compute scp runner@tools-vm:~/tools/results/${{ matrix.test_type }}_iter_${i}_k6.csv . --zone=europe-central2-a --tunnel-through-iap
-            gcloud storage cp ${{ matrix.test_type }}_iter_${i}_k6.csv gs://thesis-test-results/run-${{ needs.setup_base.outputs.run_id }}/${{ matrix.runtime }}/${{ matrix.test_type }}/
+              --command="chmod +x ~/tools/run_test.sh && bash ~/tools/run_test.sh ${{ env.APP_IP }} ${{ matrix.runtime }} ${{ matrix.test_type }} ${i}"
+                
+            gcloud compute scp runner@tools-vm:~/tools/results/${{ matrix.test_type }}_iter_${i}_k6.csv runner@tools-vm:~/tools/results/${{ matrix.test_type }}_iter_${i}.json  . --zone=europe-central2-a --tunnel-through-iap
+            gcloud storage cp ${{ matrix.test_type }}_iter_${i}_k6.csv ${{ matrix.test_type }}_iter_${i}.json  gs://thesis-test-results/run-${{ needs.setup_base.outputs.run_id }}/${{ matrix.runtime }}/${{ matrix.test_type }}/
           done
+          
+          curl -s -X POST http://${{ env.APP_IP }}/teardown
 
 
-  teardown_base:
-    needs: [setup_base, run_tests]
-    if: always()
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: google-github-actions/auth@v2
-        with:
-          credentials_json: ${{ secrets.GCP_CREDENTIALS }}
-      - uses: hashicorp/setup-terraform@v3
-        with:
-          terraform_version: "1.16.3"
-
-      - name: Terraform Destroy - modules
-        if: always()
-        working-directory: infra/modules
-        run: |
-          terraform init
-          terraform destroy -auto-approve
-
-      - name: Terraform Destroy - base
-        working-directory: infra/base
-        env:
-          TF_VAR_db_password: ${{ secrets.DB_PASSWORD }}
-        run: |
-          terraform init
-          terraform destroy -auto-approve
+#  teardown_base:
+#    needs: [setup_base, run_tests]
+#    if: always()
+#    runs-on: ubuntu-latest
+#    steps:
+#      - uses: actions/checkout@v4
+#      - uses: google-github-actions/auth@v2
+#        with:
+#          credentials_json: ${{ secrets.GCP_CREDENTIALS }}
+#      - uses: google-github-actions/setup-gcloud@v2
+#        with:
+#          install_components: 'gke-gcloud-auth-plugin,kubectl'
+#      - uses: hashicorp/setup-terraform@v3
+#        with:
+#          terraform_version: "1.16.3"
+#      - uses: azure/setup-helm@v4
+#
+#      - name: Terraform Destroy - modules
+#        if: always()
+#        working-directory: infra/modules
+#        run: |
+#          terraform init
+#          CLUSTER_NAME=$(terraform output -raw cluster_name)
+#          gcloud container clusters get-credentials $CLUSTER_NAME --zone=europe-central2-a
+#
+#          helm uninstall thesis-api --ignore-not-found --wait
+#          terraform destroy -auto-approve
+#
+#      - name: Terraform Destroy - base
+#        working-directory: infra/base
+#        env:
+#          TF_VAR_db_password: ${{ secrets.DB_PASSWORD }}
+#        run: |
+#          terraform init
+#          terraform destroy -auto-approve
