@@ -40,6 +40,15 @@ func main() {
 			return float64(dbPool.Stat().AcquiredConns())
 		}))
 
+	prometheus.MustRegister(prometheus.NewCounterFunc(
+		prometheus.CounterOpts{
+			Name: "pgxpool_empty_acquire_count",
+			Help: "Number of acquires waiting for connection",
+		},
+		func() float64 {
+			return float64(dbPool.Stat().EmptyAcquireCount())
+		}))
+	
 	gin.SetMode(gin.ReleaseMode)
 	r := gin.New()
 	r.Use(gin.Recovery())
