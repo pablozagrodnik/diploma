@@ -1,0 +1,27 @@
+import http from 'k6/http';
+import { sleep } from 'k6';
+
+
+export const options = {
+    stages: [
+        { duration: '10s', target: 75 },
+        { duration: '30s', target: 75 },
+        { duration: '15s', target: 250 },
+        { duration: '30s', target: 250 },
+        { duration: '15s', target: 500 },
+        { duration: '3m', target: 500 },
+        { duration: '10s', target: 0 },
+    ],
+    systemTags: ['status', 'error'],
+};
+
+export default function () {
+    const baseUrl = __ENV.API_URL;
+
+    http.post(`${baseUrl}/records`);
+
+    const randomId = Math.floor(Math.random() * 10000) +1;
+    http.get(`${baseUrl}/records/${randomId}`);
+
+    sleep(0.1);
+};
