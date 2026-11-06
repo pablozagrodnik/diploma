@@ -9,6 +9,7 @@ jobs:
     outputs:
       db_ip: ${{ steps.get_ip.outputs.DB_IP }}
       run_id: ${{ steps.set_run_id.outputs.RUN_ID }}
+      cluster_name: ${{ steps.apply_modules.outputs.CLUSTER_NAME }}
     steps:
       - name: Set Run ID
         id: set_run_id
@@ -17,6 +18,9 @@ jobs:
       - uses: google-github-actions/auth@v2
         with:
           credentials_json: ${{ secrets.GCP_CREDENTIALS }}
+      - uses: google-github-actions/setup-gcloud@v2
+        with:
+          version: '568.0.0'
       - uses: hashicorp/setup-terraform@v3
         with:
           terraform_version: "1.16.3"
@@ -35,6 +39,21 @@ jobs:
           IP=$(terraform output -raw postgres_private_ip)
           echo "DB_IP=$IP" >> $GITHUB_OUTPUT
 
+      - name: Terraform Apply - modules
+        id: apply_modules
+        working-directory: infra/modules
+        run: |
+          terraform init
+          terraform apply -auto-approve
+          CLUSTER=$(terraform output -raw cluster_name)
+          echo "CLUSTER_NAME=$CLUSTER" >> $GITHUB_OUTPUT
+
+      - name: Upload Tools to VM
+        run: |
+          gcloud compute scp --quiet --recurse tools runner@tools-vm:~/ --zone=europe-central2-a --tunnel-through-iap
+          gcloud compute ssh runner@tools-vm --quiet --zone=europe-central2-a --tunnel-through-iap \
+            --command="chmod +x ~/tools/run_test.sh ~/tools/init_monitoring.sh && ~/tools/init_monitoring.sh"
+
   run_tests:
     needs: setup_base
     runs-on: ubuntu-latest
@@ -42,10 +61,36 @@ jobs:
       max-parallel: 1
       fail-fast: false
       matrix:
-        runtime: [ java-jit, go ]
-        test_type: [ stress ]
-    #       runtime: [ java-jit, java-native, go ]
-    #       test_type: [idle, constant, linear, spike, stress]
+        test_type: [ idle, cpu_constant, db_constant, cpu_linear, db_linear, cpu_spike, db_spike, cpu_stress, db_stress ]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_CREDENTIALS }}
+
+      - uses: google-github-actions/setup-gcloud@v2
+        with:
+          version: '568.0.0'
+          install_components: 'gke-gcloud-auth-plugin,kubectl'
+
+      - uses: azure/setup-helm@v4
+
+      - name: Run Scenario Across All Runtimes
+        env:
+          DB_PASS: ${{ secrets.DB_PASSWORD }}
+          DB_IP: ${{ needs.setup_base.outputs.db_ip }}
+          CLUSTER_NAME: ${{ needs.setup_base.outputs.cluster_name }}
+          RUN_ID: ${{ needs.setup_base.outputs.run_id }}
+          TEST_TYPE: ${{ matrix.test_type }}
+          GITHUB_REPO: ${{ github.repository }}
+        run: bash .github/scripts/run_scenario.sh
+
+
+  teardown_base:
+    needs: [setup_base, run_tests]
+    if: always()
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: google-github-actions/auth@v2
@@ -53,108 +98,28 @@ jobs:
           credentials_json: ${{ secrets.GCP_CREDENTIALS }}
       - uses: google-github-actions/setup-gcloud@v2
         with:
+          version: '568.0.0'
           install_components: 'gke-gcloud-auth-plugin,kubectl'
       - uses: hashicorp/setup-terraform@v3
         with:
           terraform_version: "1.16.3"
-      - uses: azure/setup-helm@v4
 
-      - name: Terraform Apply - modules
+      - uses: azure/setup-helm@v4
+      - name: Terraform Destroy - modules
+        if: always()
         working-directory: infra/modules
         run: |
           terraform init
-          terraform apply -auto-approve
-
-      - name: GKE Config & Deploy App
-        working-directory: infra/modules
-        env:
-          DB_PASS: ${{ secrets.DB_PASSWORD }}
-        run: |
           CLUSTER_NAME=$(terraform output -raw cluster_name)
           gcloud container clusters get-credentials $CLUSTER_NAME --zone=europe-central2-a
-          
-          REPO=$(echo "${{ github.repository }}" | tr '[:upper:]' '[:lower:]')
-          
+
           helm uninstall thesis-api --ignore-not-found --wait
-          kubectl delete svc thesis-api --ignore-not-found --wait
-          
-          helm upgrade --install thesis-api ../../k8s/thesis-api \
-            --set image.repository=ghcr.io/$REPO/thesis-api-${{ matrix.runtime }} \
-            --set image.tag=latest \
-            --set env.DB_HOST=${{ needs.setup_base.outputs.db_ip }} \
-            --set env.DB_USER=postgres \
-            --set env.DB_PASSWORD=$DB_PASS
+          terraform destroy -auto-approve
 
-      - name: Internal Load Balancer IP
+      - name: Terraform Destroy - base
+        working-directory: infra/base
+        env:
+          TF_VAR_db_password: ${{ secrets.DB_PASSWORD }}
         run: |
-          APP_IP=""
-          while [ -z "$APP_IP" ]; do
-            sleep 6
-            APP_IP=$(kubectl get svc -l app.kubernetes.io/instance=thesis-api -o jsonpath='{.items[0].status.loadBalancer.ingress[0].ip}' 2>/dev/null)
-          done
-          echo "APP_IP=$APP_IP" >> $GITHUB_ENV
-
-      - name: Wait for LB
-        run: |
-          while ! curl -s -o /dev/null -w "%{http_code}" http://${{ env.APP_IP }}/health | grep -q "200"; do
-            echo "Waiting for LoadBalancer"
-            sleep 5
-          done
-
-      - name: Run Test Iterations
-        run: |
-          gcloud compute scp --quiet --recurse tools runner@tools-vm:~/ --zone=europe-central2-a --tunnel-through-iap
-          
-          ITERATIONS=2
-          
-          for i in $(seq 1 $ITERATIONS); do
-            echo "---$i - ${{ matrix.runtime }}---"
-          
-            kubectl rollout restart deployment thesis-api
-            kubectl rollout status deployment thesis-api --timeout=120s
-
-            gcloud compute ssh runner@tools-vm --quiet --zone=europe-central2-a --tunnel-through-iap \
-              --command="chmod +x ~/tools/run_test.sh && bash ~/tools/run_test.sh ${{ env.APP_IP }} ${{ matrix.runtime }} ${{ matrix.test_type }} ${i}"
-                
-            gcloud compute scp runner@tools-vm:~/tools/results/${{ matrix.test_type }}_iter_${i}_k6.csv runner@tools-vm:~/tools/results/${{ matrix.test_type }}_iter_${i}.json  . --zone=europe-central2-a --tunnel-through-iap
-            gcloud storage cp ${{ matrix.test_type }}_iter_${i}_k6.csv ${{ matrix.test_type }}_iter_${i}.json  gs://thesis-test-results/run-${{ needs.setup_base.outputs.run_id }}/${{ matrix.runtime }}/${{ matrix.test_type }}/
-          done
-          
-          curl -s -X POST http://${{ env.APP_IP }}/teardown
-
-
-#  teardown_base:
-#    needs: [setup_base, run_tests]
-#    if: always()
-#    runs-on: ubuntu-latest
-#    steps:
-#      - uses: actions/checkout@v4
-#      - uses: google-github-actions/auth@v2
-#        with:
-#          credentials_json: ${{ secrets.GCP_CREDENTIALS }}
-#      - uses: google-github-actions/setup-gcloud@v2
-#        with:
-#          install_components: 'gke-gcloud-auth-plugin,kubectl'
-#      - uses: hashicorp/setup-terraform@v3
-#        with:
-#          terraform_version: "1.16.3"
-#      - uses: azure/setup-helm@v4
-#
-#      - name: Terraform Destroy - modules
-#        if: always()
-#        working-directory: infra/modules
-#        run: |
-#          terraform init
-#          CLUSTER_NAME=$(terraform output -raw cluster_name)
-#          gcloud container clusters get-credentials $CLUSTER_NAME --zone=europe-central2-a
-#
-#          helm uninstall thesis-api --ignore-not-found --wait
-#          terraform destroy -auto-approve
-#
-#      - name: Terraform Destroy - base
-#        working-directory: infra/base
-#        env:
-#          TF_VAR_db_password: ${{ secrets.DB_PASSWORD }}
-#        run: |
-#          terraform init
-#          terraform destroy -auto-approve
+          terraform init
+          terraform destroy -auto-approve
