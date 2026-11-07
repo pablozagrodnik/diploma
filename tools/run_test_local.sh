@@ -6,7 +6,7 @@ TEST_TYPE=$3
 ITER=$4
 
 # 1. Tworzenie osobnego katalogu dla każdego środowiska
-RESULTS_DIR="$(pwd)/results/${RUNTIME}"
+RESULTS_DIR="$(pwd)/results/${RUNTIME}/${TEST_TYPE}"
 mkdir -p "$RESULTS_DIR"
 chmod 777 "$RESULTS_DIR"
 
