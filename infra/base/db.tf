@@ -22,9 +22,14 @@ resource "google_sql_database_instance" "postgres" {
   depends_on = [google_service_networking_connection.private_vpc_connection]
 
   settings {
-    tier              = "db-g1-small"
+    tier              = "db-e2-medium"
     availability_type = "ZONAL"
     disk_size         = 10
+
+    database_flags {
+      name  = "max_connections"
+      value = "1000"
+    }
 
     ip_configuration {
       ipv4_enabled    = false

@@ -20,7 +20,7 @@ func main() {
 	password := getEnv("DB_PASSWORD", "password")
 	dbName := getEnv("DB_NAME", "postgres")
 
-	connString := fmt.Sprintf("postgres://%s:%s@%s/%s?pool_max_conns=50&pool_min_conns=10", user, password, host, dbName)
+	connString := fmt.Sprintf("postgres://%s:%s@%s/%s?pool_max_conns=1000&pool_min_conns=10", user, password, host, dbName)
 
 	var err error
 	dbPool, err = pgxpool.New(context.Background(), connString)
@@ -48,7 +48,7 @@ func main() {
 		func() float64 {
 			return float64(dbPool.Stat().EmptyAcquireCount())
 		}))
-	
+
 	gin.SetMode(gin.ReleaseMode)
 	r := gin.New()
 	r.Use(gin.Recovery())
