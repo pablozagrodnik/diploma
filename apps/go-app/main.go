@@ -22,8 +22,15 @@ func main() {
 
 	connString := fmt.Sprintf("postgres://%s:%s@%s/%s?pool_max_conns=1000&pool_min_conns=10", user, password, host, dbName)
 
-	var err error
-	dbPool, err = pgxpool.New(context.Background(), connString)
+	config, err := pgxpool.ParseConfig(connString)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	config.MaxConns = 1000
+	config.MinConns = 10
+
+	dbPool, err := pgxpool.NewWithConfig(context.Background(), config)
 	if err != nil {
 		log.Fatalf("Unable to connect to database: %v\n", err)
 	}
