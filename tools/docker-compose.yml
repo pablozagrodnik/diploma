@@ -6,8 +6,8 @@ services:
     ports:
       - "9090:9090"
     volumes:
-      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
-      - ./targets.json:/etc/prometheus/targets.json
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:z
+      - ./targets.json:/etc/prometheus/targets.json:z
       - prometheus_data:/prometheus
     command:
       - '--config.file=/etc/prometheus/prometheus.yml'
@@ -33,9 +33,7 @@ services:
   k6:
     image: grafana/k6:latest
     volumes:
-      - ./scripts:/scripts
-    profiles:
-      - tools
+      - ./scripts:/scripts:z
 
 volumes:
   prometheus_data:
