@@ -2,9 +2,14 @@ services:
   postgres:
     image: postgres:16
     ports:
-      - "5432:5432"
+      - "0.0.0.0:5432:5432"
     environment:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: password
       POSTGRES_DB: postgres
     command: ["postgres", "-c", "max_connections=1000"]
+    deploy:
+      resources:
+        limits:
+          cpus: '2.0'
+          memory: '4096M'

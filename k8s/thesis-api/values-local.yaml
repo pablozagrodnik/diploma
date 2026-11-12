@@ -170,6 +170,6 @@ redis:
   host: ""
 
 env:
-  DB_HOST: "host.minikube.internal"
+  DB_HOST: "192.168.122.1"
   DB_USER: "postgres"
   DB_PASSWORD: "password"

@@ -30,7 +30,7 @@ func main() {
 	config.MaxConns = 1000
 	config.MinConns = 10
 
-	dbPool, err := pgxpool.NewWithConfig(context.Background(), config)
+	dbPool, err = pgxpool.NewWithConfig(context.Background(), config)
 	if err != nil {
 		log.Fatalf("Unable to connect to database: %v\n", err)
 	}

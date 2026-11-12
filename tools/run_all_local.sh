@@ -1,13 +1,22 @@
 #!/bin/bash
 
-# 1. Start Minikube
-minikube config set rootless true
-minikube start --driver=podman --cpus=2 --memory=8192
+echo "=== Weryfikacja środowiska hosta (Fedora / TTY) ==="
+
+SWAP_ACTIVE=$(swapon --show | wc -l)
+if [ "$SWAP_ACTIVE" -gt 0 ]; then
+    echo "Aktywny Swap/zRAM"
+fi
+
+if [ -f /sys/devices/system/cpu/cpufreq/boost ]; then
+    BOOST_VAL=$(cat /sys/devices/system/cpu/cpufreq/boost)
+    echo "Stan AMD Core Performance Boost: $BOOST_VAL (0=wyłączony, 1=aktywny)"
+fi
+
+minikube start --driver=kvm2 --cpus=2 --memory=8192
 
 export KUBECONFIG=~/.kube/config
 kubectl config use-context minikube
 
-# 2. Twardy reset kontenerów i wymuszenie pliku
 podman-compose -f ../apps/docker-compose.yml down
 podman-compose down
 
@@ -25,11 +34,9 @@ done
 sleep 5
 echo "Monitoring ready"
 
-# Kolejność środowisk jak w run_scenario.sh, db_stress jako pierwszy scenariusz
-RUNTIMES=("java-jit" "java-native" "go")
+RUNTIMES=("go" "java-jit" "java-native")
 SCENARIOS=("db_stress" "cpu_stress" "cpu_constant" "cpu_linear" "cpu_spike" "db_constant" "db_linear" "db_spike" "idle")
 
-# 3. Jednorazowe zbudowanie i załadowanie obrazów do Minikube przed pętlą testów
 for RUNTIME in "${RUNTIMES[@]}"; do
     echo "=== Budowanie obrazu: $RUNTIME ==="
     IMAGE_NAME="localhost/thesis/${RUNTIME}:latest"
@@ -50,7 +57,6 @@ done
 
 NODE_IP=$(minikube ip)
 
-# 4. Pętla główna (Scenariusz -> Środowisko -> Iteracja, 1:1 jak w chmurze)
 for SCENARIO in "${SCENARIOS[@]}"; do
     for RUNTIME in "${RUNTIMES[@]}"; do
         echo "--- Runtime: $RUNTIME | Scenario: $SCENARIO ---"
@@ -70,21 +76,12 @@ for SCENARIO in "${SCENARIOS[@]}"; do
         NODE_PORT=$(KUBECONFIG=~/.kube/config kubectl get svc thesis-api -o jsonpath="{.spec.ports[0].nodePort}")
         APP_URL="${NODE_IP}:${NODE_PORT}"
 
-        until curl -s -o /dev/null -w '%{http_code}' "http://${APP_URL}/health" | grep -q '200'; do
-            echo "Waiting for service health..."
-            sleep 5
-        done
-
         for ITER in {1..5}; do
             echo "--- $RUNTIME : $SCENARIO : iter $ITER ---"
 
             KUBECONFIG=~/.kube/config kubectl rollout restart deployment thesis-api
-            KUBECONFIG=~/.kube/config kubectl rollout status deployment thesis-api --timeout=240s
 
-            until curl -s -o /dev/null -w '%{http_code}' "http://${APP_URL}/health" | grep -q '200'; do
-                echo "Waiting for pod health after rollout..."
-                sleep 2
-            done
+            KUBECONFIG=~/.kube/config kubectl rollout status deployment thesis-api --timeout=240s
 
             ./run_test_local.sh "$APP_URL" "$RUNTIME" "$SCENARIO" "$ITER"
         done
