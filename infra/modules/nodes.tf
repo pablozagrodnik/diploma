@@ -9,8 +9,6 @@ resource "google_container_node_pool" "primary_nodes" {
     disk_size_gb = 30
     disk_type    = "pd-standard"
 
-    service_account = data.terraform_remote_state.base.outputs.gke_service_account_email
-
     oauth_scopes = [
       "https://www.googleapis.com/auth/cloud-platform"
     ]

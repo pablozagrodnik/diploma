@@ -16,7 +16,7 @@ resource "google_compute_firewall" "allow_prometheus_scraping" {
 
   allow {
     protocol = "tcp"
-    ports    = [8080, 9090, 80]
+    ports    = [8080, 80]
   }
 
   source_ranges = ["10.0.0.0/24"]

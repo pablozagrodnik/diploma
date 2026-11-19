@@ -16,7 +16,7 @@ resource "google_service_networking_connection" "private_vpc_connection" {
 
 resource "google_sql_database_instance" "postgres" {
   name             = "thesis-db"
-  database_version = "POSTGRES_15"
+  database_version = "POSTGRES_16"
   region           = "europe-central2"
 
   depends_on = [google_service_networking_connection.private_vpc_connection]
