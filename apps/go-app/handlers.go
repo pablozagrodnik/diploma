@@ -81,10 +81,10 @@ func fibonacci(n int) int {
 func getRecord(c *gin.Context) {
 	id := c.Param("id")
 	query := `
-			SELECT a.id, a.name, a.value, b.title, b.description
-			FROM data_a a 
-			LEFT JOIN data_b b ON a.id = b.data_a_id
-			WHERE a.id = $1`
+		SELECT a.id, a.name, a.value, b.id, b.title, b.description
+		FROM data_a a 
+		LEFT JOIN data_b b ON a.id = b.data_a_id
+		WHERE a.id = $1`
 
 	rows, err := dbPool.Query(context.Background(), query, id)
 	if err != nil {
@@ -94,19 +94,24 @@ func getRecord(c *gin.Context) {
 	defer rows.Close()
 
 	var parent DataA
-	var children []DataB
+	children := make([]DataB, 0)
 	hasData := false
 
 	for rows.Next() {
 		hasData = true
+		var bID *int
 		var bTitle, bDesc *string
-		err := rows.Scan(&parent.ID, &parent.Name, &parent.Value, &bTitle, &bDesc)
+		err := rows.Scan(&parent.ID, &parent.Name, &parent.Value, &bID, &bTitle, &bDesc)
 		if err != nil {
 			c.String(http.StatusInternalServerError, err.Error())
 			return
 		}
-		if bTitle != nil && bDesc != nil {
-			children = append(children, DataB{Title: *bTitle, Description: *bDesc})
+		if bID != nil && bTitle != nil && bDesc != nil {
+			children = append(children, DataB{
+				ID:          *bID,
+				Title:       *bTitle,
+				Description: *bDesc,
+			})
 		}
 	}
 
@@ -137,14 +142,26 @@ func createRecord(c *gin.Context) {
 		return
 	}
 
-	batch := &pgx.Batch{}
+	children := []DataB{
+		{Title: "TITLE 1", Description: "DESCRIPTION 1"},
+		{Title: "TITLE 2", Description: "DESCRIPTION 2"},
+		{Title: "TITLE 3", Description: "DESCRIPTION 3"},
+		{Title: "TITLE 4", Description: "DESCRIPTION 4"},
+	}
 
-	batch.Queue("INSERT INTO data_b (data_a_id, title, description) VALUES ($1, $2, $3)", newID, "TITLE 1", "DESCRIPTION 1")
-	batch.Queue("INSERT INTO data_b (data_a_id, title, description) VALUES ($1, $2, $3)", newID, "TITLE 2", "DESCRIPTION 2")
-	batch.Queue("INSERT INTO data_b (data_a_id, title, description) VALUES ($1, $2, $3)", newID, "TITLE 3", "DESCRIPTION 3")
-	batch.Queue("INSERT INTO data_b (data_a_id, title, description) VALUES ($1, $2, $3)", newID, "TITLE 4", "DESCRIPTION 4")
+	batch := &pgx.Batch{}
+	for _, ch := range children {
+		batch.Queue("INSERT INTO data_b (data_a_id, title, description) VALUES ($1, $2, $3) RETURNING id", newID, ch.Title, ch.Description)
+	}
 
 	res := tx.SendBatch(ctx, batch)
+	for i := range children {
+		if err := res.QueryRow().Scan(&children[i].ID); err != nil {
+			res.Close()
+			c.String(http.StatusInternalServerError, err.Error())
+			return
+		}
+	}
 	if err := res.Close(); err != nil {
 		c.String(http.StatusInternalServerError, err.Error())
 		return
@@ -155,5 +172,5 @@ func createRecord(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, DataA{ID: newID, Name: "POST TEST", Value: 100})
+	c.JSON(http.StatusOK, DataA{ID: newID, Name: "POST TEST", Value: 100, DataB: children})
 }
