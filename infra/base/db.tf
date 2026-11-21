@@ -23,6 +23,7 @@ resource "google_sql_database_instance" "postgres" {
 
   settings {
     tier              = "db-custom-2-4096"
+    edition           = "ENTERPRISE"
     availability_type = "ZONAL"
     disk_size         = 10
 
