@@ -76,7 +76,7 @@ for SCENARIO in "${SCENARIOS[@]}"; do
         NODE_PORT=$(KUBECONFIG=~/.kube/config kubectl get svc thesis-api -o jsonpath="{.spec.ports[0].nodePort}")
         APP_URL="${NODE_IP}:${NODE_PORT}"
 
-        for ITER in {1..5}; do
+        for ITER in {1..8}; do
             echo "--- $RUNTIME : $SCENARIO : iter $ITER ---"
 
             KUBECONFIG=~/.kube/config kubectl rollout restart deployment thesis-api

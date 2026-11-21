@@ -4,7 +4,7 @@ set -euo pipefail
 gcloud container clusters get-credentials "$CLUSTER_NAME" --zone=europe-central2-a
 gcloud config set storage/parallel_composite_upload_enabled False
 REPO=$(echo "$GITHUB_REPO" | tr '[:upper:]' '[:lower:]')
-ITERATIONS=5
+ITERATIONS=8
 
 for RUNTIME in java-jit java-native go; do
   echo "--- Runtime: $RUNTIME | Scenario: $TEST_TYPE ---"
