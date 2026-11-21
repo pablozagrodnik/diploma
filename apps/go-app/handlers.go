@@ -54,7 +54,7 @@ func resetDatabase(c *gin.Context) {
 
 func teardown(c *gin.Context) {
 	ctx := context.Background()
-	_, err := dbPool.Exec(ctx, "DROP OWNED BY postgres CASCADE;")
+	_, err := dbPool.Exec(ctx, "DROP TABLE IF EXISTS data_b, data_a CASCADE;")
 	if err != nil {
 		c.String(http.StatusInternalServerError, "Drop error: "+err.Error())
 		return

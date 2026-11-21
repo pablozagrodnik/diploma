@@ -70,7 +70,7 @@ public class SystemController {
 
     @PostMapping("/teardown")
     public ResponseEntity<String> teardown() {
-        jdbcTemplate.execute("DROP OWNED BY postgres CASCADE");
+        jdbcTemplate.execute("DROP TABLE IF EXISTS data_b, data_a CASCADE");
         return ResponseEntity.ok("Database clear");
     }
 }
