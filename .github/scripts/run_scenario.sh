@@ -4,7 +4,22 @@ set -euo pipefail
 gcloud container clusters get-credentials "$CLUSTER_NAME" --zone=europe-central2-a
 gcloud config set storage/parallel_composite_upload_enabled False
 REPO=$(echo "$GITHUB_REPO" | tr '[:upper:]' '[:lower:]')
-ITERATIONS=8
+ITERATIONS=6
+
+mkdir -p ~/.ssh
+[ -f ~/.ssh/google_compute_engine ] || ssh-keygen -t rsa -f ~/.ssh/google_compute_engine -N "" -q
+
+retry() {
+  local n=1 max=3
+  until "$@"; do
+    if [ "$n" -ge "$max" ]; then
+      return 1
+    fi
+    echo "Błąd połączenia - ($n/$max)..."
+    n=$((n + 1))
+    sleep 10
+  done
+}
 
 for RUNTIME in java-jit java-native go; do
   echo "--- Runtime: $RUNTIME | Scenario: $TEST_TYPE ---"
@@ -25,7 +40,7 @@ for RUNTIME in java-jit java-native go; do
     APP_IP=$(kubectl get svc -l app.kubernetes.io/instance=thesis-api -o jsonpath='{.items[0].status.loadBalancer.ingress[0].ip}' 2>/dev/null || true)
   done
 
-  gcloud compute ssh runner@tools-vm --quiet --zone=europe-central2-a --tunnel-through-iap \
+  retry gcloud compute ssh runner@tools-vm --quiet --zone=europe-central2-a --tunnel-through-iap \
     --command="while ! curl -s -o /dev/null -w '%{http_code}' http://$APP_IP/health | grep -q '200'; do echo 'Waiting for LoadBalancer...'; sleep 5; done"
 
   for i in $(seq 1 $ITERATIONS); do
@@ -34,15 +49,15 @@ for RUNTIME in java-jit java-native go; do
     kubectl rollout restart deployment thesis-api
     kubectl rollout status deployment thesis-api --timeout=240s
 
-    gcloud compute ssh runner@tools-vm --quiet --zone=europe-central2-a --tunnel-through-iap \
+    retry gcloud compute ssh runner@tools-vm --quiet --zone=europe-central2-a --tunnel-through-iap \
       --command="bash ~/tools/run_test.sh $APP_IP $RUNTIME $TEST_TYPE ${i}"
 
-    gcloud compute scp \
+    retry gcloud compute scp \
       "runner@tools-vm:~/tools/results/${TEST_TYPE}_iter_${i}_k6.csv.gz" \
       "runner@tools-vm:~/tools/results/${TEST_TYPE}_iter_${i}.json" \
       . --zone=europe-central2-a --tunnel-through-iap
 
-    gcloud storage cp \
+    retry gcloud storage cp \
       "${TEST_TYPE}_iter_${i}_k6.csv.gz" \
       "${TEST_TYPE}_iter_${i}.json" \
       "gs://thesis-test-results/run-${RUN_ID}/${RUNTIME}/${TEST_TYPE}/"

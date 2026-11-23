@@ -110,10 +110,11 @@ jobs:
         working-directory: infra/modules
         run: |
           terraform init
-          CLUSTER_NAME=$(terraform output -raw cluster_name)
-          gcloud container clusters get-credentials $CLUSTER_NAME --zone=europe-central2-a
-
-          helm uninstall thesis-api --ignore-not-found --wait
+          CLUSTER_NAME=$(terraform output -raw cluster_name || true)
+          if [ -n "$CLUSTER_NAME" ]; then
+            gcloud container clusters get-credentials "$CLUSTER_NAME" --zone=europe-central2-a || true
+            helm uninstall thesis-api --ignore-not-found --wait || true
+          fi
           terraform destroy -auto-approve
 
       - name: Terraform Destroy - base

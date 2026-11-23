@@ -55,8 +55,11 @@ fi
 
 START_TIME=$(date +%s)
 
+mkdir -p /dev/shm/k6_tmp
+chmod 777 /dev/shm/k6_tmp
+
 podman-compose run --rm \
-  -v "${RESULTS_DIR}:/results:z" \
+  -v "/dev/shm/k6_tmp:/results:z" \
   -e API_URL=http://${APP_IP} \
   -e K6_PROMETHEUS_RW_SERVER_URL=http://prometheus:9090/api/v1/write \
   k6 run -o experimental-prometheus-rw --out csv=/results/${TEST_TYPE}_iter_${ITER}_k6.csv /scripts/${TEST_TYPE}.js
@@ -82,8 +85,9 @@ sleep 5
 
 METRICS="process_cpu_usage|system_cpu_usage|jvm_memory_used_bytes|jvm_memory_committed_bytes|hikaricp_connections_active|hikaricp_connections_pending|process_cpu_seconds_total|go_memstats_alloc_bytes|pgxpool_acquired_conns|pgxpool_empty_acquire_count|jvm_threads_live_threads|jvm_threads_virtual_active|go_goroutines|jvm_gc_pause_seconds_max|go_gc_duration_seconds|go_memstats_sys_bytes"
 
-if [ -f "${RESULTS_DIR}/${TEST_TYPE}_iter_${ITER}_k6.csv" ]; then
-    gzip -f "${RESULTS_DIR}/${TEST_TYPE}_iter_${ITER}_k6.csv"
+if [ -f "/dev/shm/k6_tmp/${TEST_TYPE}_iter_${ITER}_k6.csv" ]; then
+    gzip -c "/dev/shm/k6_tmp/${TEST_TYPE}_iter_${ITER}_k6.csv" > "${RESULTS_DIR}/${TEST_TYPE}_iter_${ITER}_k6.csv.gz"
+    rm -f "/dev/shm/k6_tmp/${TEST_TYPE}_iter_${ITER}_k6.csv"
 else
     echo "BŁĄD: Plik CSV z wynikami k6 nie został wygenerowany!"
 fi
